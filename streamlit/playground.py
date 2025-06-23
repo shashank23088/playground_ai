@@ -1,7 +1,7 @@
 import numpy as np
 import random
 import time
-# from openai import OpenAI    # fck openai
+from openai import OpenAI    # fck openai
 import streamlit as st
 
 # with st.chat_message("user"):
