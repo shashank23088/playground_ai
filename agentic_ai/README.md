@@ -1,0 +1,3 @@
+# AGENTIC AI COURSE [KRISH NAIK]
+
+- Pydantic

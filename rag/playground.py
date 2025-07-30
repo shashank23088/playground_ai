@@ -4,7 +4,9 @@
 # Embedding Generation options: [https://python.langchain.com/docs/integrations/text_embedding/]
 # Ollama Chat Model: [https://python.langchain.com/docs/integrations/llms/ollama/]
 
-from langchain_community.document_loaders import PyPDFDirectoryLoader    # langchain.document_loader depricated
+# weak for unstructured pdf (email threads)
+from langchain_community.document_loaders import PyPDFDirectoryLoader    # langchain.document_loader depricated 
+# from langchain_community.document_loaders import UnstructuredPDFLoader
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 from langchain.schema.document import Document
 # from langchain_community.embeddings.bedrock import BedrockEmbeddings    # aws embeddings
@@ -13,6 +15,7 @@ from langchain_chroma import Chroma
 from langchain.prompts import  ChatPromptTemplate
 from langchain_ollama.llms import OllamaLLM
 import argparse
+import os
 
 # CONSTANTS
 CHROMA_PATH = "./chroma_db"
@@ -20,9 +23,31 @@ COLLECTION_NAME = "rag_tutorial"
 DATA_PATH = "./pdfs"
 
 
+# def load_documents():
+#     document_loader = PyPDFDirectoryLoader(DATA_PATH)
+#     return document_loader.load()
+
+
 def load_documents():
+
+    # documents = []
+    # for file in os.listdir(DATA_PATH):
+    #     if file.endswith('.pdf'):
+    #         loader = UnstructuredPDFLoader(f'{DATA_PATH}/{file}')
+    #         file_docs = loader.load()
+    #         documents.extend(file_docs)
+
     document_loader = PyPDFDirectoryLoader(DATA_PATH)
-    return document_loader.load()
+    documents = document_loader.load()
+
+    # from collections import Counter
+    # doc_sources = Counter(doc.metadata['source'] for doc in documents)
+    # print(f"[DEBUG] Loaded {len(documents)} chunks from {len(doc_sources)} file(s):")
+    # for source, count in doc_sources.items():
+    #     print(f"    {source} => {count} chunks")
+
+    return documents
+
 
 
 def split_documents(documents: list[Document]):    # type hinting
@@ -85,23 +110,35 @@ def add_to_chroma(chunks: list[Document]):
     # adding docs not in db
     new_chunks = []
     new_chunk_ids = []
+    valid_ids = set()
+
     for chunk in chunks:
+        chunk_id = chunk.metadata['id']
+        valid_ids.add(chunk_id)
+
         if not chunk.page_content.strip():
             print(f"[WARNING] Empty content for chunk id: {chunk.metadata['id']}")
 
         else:
-            if chunk.metadata['id'] not in curr_ids:
+            if chunk_id not in curr_ids:
                 new_chunks.append(chunk)
                 new_chunk_ids.append(chunk.metadata['id'])
 
-    if new_chunks:
-        db.add_documents(new_chunks, ids=new_chunk_ids)
+    stale_ids = curr_ids - valid_ids
+    if stale_ids:
+        db.delete(ids=list(stale_ids))
+        print(f"[INFO] Deleted {len(stale_ids)} stale ids.")
 
     else:
-        print("[ERROR] NO VALID CHUNKS TO ADD!")
-    # db.persist() [automatically done in newer versions]
+        print("[INFO] No stale chunks detected.")
 
-    print(f"[INFO] Newly Added Documents: {len(new_chunks)}.")
+    if new_chunks:
+        db.add_documents(new_chunks, ids=new_chunk_ids)
+        print(f"[INFO] Newly Added Documents: {len(new_chunks)}.")
+
+    else:
+        print("[INFO] No new chunks detected.")
+    # db.persist() [automatically done in newer versions]
 
 
 def query_rag(query_txt: str, model_name: str):
@@ -175,6 +212,12 @@ def main():
 
     chunks = split_documents(documents)
     chunks_with_ids = calculate_chunk_ids(chunks)
+
+    # print("[DEBUG] All chunk IDs and sources:")
+    # for chunk in chunks_with_ids:
+    #     print(f"  - {chunk.metadata['id']} | {chunk.metadata['source']} | len: {len(chunk.page_content)}")
+
+
     add_to_chroma(chunks_with_ids)
 
     # query_txt = """
